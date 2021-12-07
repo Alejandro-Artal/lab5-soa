@@ -43,6 +43,23 @@ class Router(meterRegistry: MeterRegistry) : RouteBuilder() {
 
     override fun configure() {
         from(DIRECT_ROUTE)
+            .process { exchange ->
+                //Get the query
+                val keyword = exchange.getIn().getHeader("keywords")
+                println(keyword)
+                if (keyword is String) {
+                    //Pattern max:n of the query where n is a number
+                    val maxPattern = Regex("max:[0-9]+")
+                    //Search for coincidences of the pattern in the query
+                    var ans : MatchResult? = maxPattern.find(keyword, 0)
+                    //If there is any coincidence, change the query to match twitter-search
+                    //query format
+                    ans?.value.let{
+                        val keywordTS = keyword.replace(pattern, "?count=" + it.filter(Char::isDigit))
+                        exchange.getIn().setHeader("keywords", keywordTS)
+                    }
+                }
+            }
             .toD("twitter-search:\${header.keywords}")
             .wireTap(LOG_ROUTE)
             .wireTap(COUNT_ROUTE)
@@ -56,7 +73,8 @@ class Router(meterRegistry: MeterRegistry) : RouteBuilder() {
             .process { exchange ->
                 val keyword = exchange.getIn().getHeader("keywords")
                 if (keyword is String) {
-                    keyword.split(" ").map {
+                    //Delete query options (max:n) to only gather metrics from keywords
+                    keyword.replace(kotlin.text.Regex("max:[0-9]+"), "").split(" ").map {
                         perKeywordMessages.increment(it)
                     }
                 }
